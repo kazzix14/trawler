@@ -18,6 +18,7 @@ import { sendMessage } from '../../lib/messaging';
 import { getSettings } from '../../lib/settings';
 import { getScreenshotDataUrl } from '../../lib/background/screenshot-store';
 import { listMarks } from '../../lib/background/mark-store';
+import { summarizeEvent } from '../../lib/export/serialize-bundle';
 import { formatClock, formatDuration, now } from '../../lib/time';
 import type {
   CheckpointInfo,
@@ -76,6 +77,8 @@ interface PanelState {
   snapshot: PanelSnapshot | null;
   marks: MarkRecord[];
   mode: WindowMode;
+  /** Mark ids currently expanded in the list (preserved across re-renders). */
+  expanded: Set<string>;
 }
 
 const state: PanelState = {
@@ -85,6 +88,7 @@ const state: PanelState = {
   snapshot: null,
   marks: [],
   mode: 'lastN',
+  expanded: new Set(),
 };
 
 let lastMarksKey = '';
@@ -232,14 +236,25 @@ function buildMarkItem(mark: MarkRecord): HTMLElement {
   const li = document.createElement('li');
   li.className = 'mark';
 
+  const row = document.createElement('div');
+  row.className = 'mark-row';
+
+  const expanded = state.expanded.has(mark.id);
+
+  const toggle = document.createElement('button');
+  toggle.className = 'mark-toggle';
+  toggle.type = 'button';
+  toggle.textContent = expanded ? '▾' : '▸';
+  toggle.setAttribute('aria-expanded', String(expanded));
+  toggle.title = 'Show / hide this mark’s captured timeline';
+  row.appendChild(toggle);
+
   const main = document.createElement('div');
   main.className = 'mark-main';
-
   const noteEl = document.createElement('div');
   noteEl.className = 'mark-note';
   noteEl.textContent = mark.note;
   main.appendChild(noteEl);
-
   const meta = document.createElement('div');
   meta.className = 'mark-meta';
   meta.textContent = `${formatClock(mark.ts)} · ${mark.events.length} events`;
@@ -250,7 +265,7 @@ function buildMarkItem(mark: MarkRecord): HTMLElement {
     meta.append(' · ', code);
   }
   main.appendChild(meta);
-  li.appendChild(main);
+  row.appendChild(main);
 
   if (mark.screenshotId) {
     const img = document.createElement('img');
@@ -258,7 +273,7 @@ function buildMarkItem(mark: MarkRecord): HTMLElement {
     img.alt = 'screenshot';
     img.loading = 'lazy';
     void loadThumb(img, mark.screenshotId);
-    li.appendChild(img);
+    row.appendChild(img);
   }
 
   const copy = document.createElement('button');
@@ -267,9 +282,62 @@ function buildMarkItem(mark: MarkRecord): HTMLElement {
   copy.textContent = 'Copy';
   copy.title = 'Copy this mark with its retained timeline';
   copy.addEventListener('click', () => void emitExport(sendMessage('exportMark', { markId: mark.id })));
-  li.appendChild(copy);
+  row.appendChild(copy);
+
+  li.appendChild(row);
+
+  const detail = buildMarkDetail(mark);
+  detail.hidden = !expanded;
+  li.appendChild(detail);
+
+  const toggleDetail = (): void => {
+    const willExpand = detail.hidden;
+    detail.hidden = !willExpand;
+    toggle.textContent = willExpand ? '▾' : '▸';
+    toggle.setAttribute('aria-expanded', String(willExpand));
+    if (willExpand) state.expanded.add(mark.id);
+    else state.expanded.delete(mark.id);
+  };
+  toggle.addEventListener('click', toggleDetail);
+  main.addEventListener('click', toggleDetail);
 
   return li;
+}
+
+/** The collapsible detail: the element + the mark's frozen page timeline. */
+function buildMarkDetail(mark: MarkRecord): HTMLElement {
+  const detail = document.createElement('div');
+  detail.className = 'mark-detail';
+
+  if (mark.element) {
+    const el = document.createElement('pre');
+    el.className = 'mark-el';
+    const lines = [
+      mark.element.htmlLine
+        ? `L${mark.element.htmlLine}: ${mark.element.startTag}`
+        : mark.element.startTag,
+      `selector: ${mark.element.selector}`,
+    ];
+    if (mark.element.leafText) lines.push(`text: "${mark.element.leafText}"`);
+    el.textContent = lines.join('\n');
+    detail.appendChild(el);
+  }
+
+  const events = document.createElement('div');
+  events.className = 'mark-events';
+  if (mark.events.length === 0) {
+    events.textContent = '(no events captured for this page)';
+  } else {
+    for (const ev of mark.events) {
+      const rowEl = document.createElement('div');
+      rowEl.className = 'mark-event-row';
+      rowEl.textContent = `${formatClock(ev.ts)}  ${summarizeEvent(ev)}`;
+      events.appendChild(rowEl);
+    }
+  }
+  detail.appendChild(events);
+
+  return detail;
 }
 
 async function loadThumb(img: HTMLImageElement, screenshotId: string): Promise<void> {

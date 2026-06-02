@@ -103,75 +103,61 @@ function describeHint(t: ElementHint): string {
   return s;
 }
 
-function formatEvent(
-  e: TimelineEvent,
-  origin: number,
-  paths: Record<string, string>,
-): string[] {
-  const h = head(e, origin);
-  const out: string[] = [];
+/**
+ * Single-line content summary of an event (no timestamp / no detail lines).
+ * Shared by the bundle timeline and the side panel's expandable mark detail.
+ */
+export function summarizeEvent(e: TimelineEvent): string {
   switch (e.kind) {
     case 'network': {
       const status =
         e.status !== undefined ? `→ ${e.status}` : e.error ? `→ ERROR ${e.error}` : '→ (pending)';
       const dur = e.durationMs !== undefined ? ` (${Math.round(e.durationMs)}ms)` : '';
-      out.push(`${h} NETWORK ${e.method} ${e.url} ${status}${dur}`);
-      if (e.requestBody) out.push(`     request:  ${oneLine(e.requestBody)}`);
-      if (e.responseBody) out.push(`     response: ${oneLine(e.responseBody)}`);
-      break;
+      return `NETWORK ${e.method} ${e.url} ${status}${dur}`;
     }
-    case 'console': {
-      out.push(`${h} CONSOLE.${e.level} ${e.args.join(' ')}`);
-      if (e.stackTop) out.push(`     at ${e.stackTop}`);
-      break;
-    }
-    case 'error': {
-      const loc = e.source ? ` (${e.source}:${e.line ?? '?'}:${e.col ?? '?'})` : '';
-      out.push(`${h} ERROR ${e.message}${loc}`);
-      if (e.stack) out.push(...indentStack(e.stack));
-      break;
-    }
-    case 'unhandledrejection': {
-      out.push(`${h} UNHANDLED REJECTION ${e.reason}`);
-      if (e.stack) out.push(...indentStack(e.stack));
-      break;
-    }
+    case 'console':
+      return `CONSOLE.${e.level} ${e.args.join(' ')}`;
+    case 'error':
+      return `ERROR ${e.message}${e.source ? ` (${e.source}:${e.line ?? '?'}:${e.col ?? '?'})` : ''}`;
+    case 'unhandledrejection':
+      return `UNHANDLED REJECTION ${e.reason}`;
     case 'websocket':
     case 'eventsource': {
       const label = e.kind === 'websocket' ? 'WS' : 'SSE';
       const extra = e.data ? ` ${oneLine(e.data)}` : e.code !== undefined ? ` code=${e.code}` : '';
-      out.push(`${h} ${label} ${e.direction} ${e.url}${extra}`);
-      break;
+      return `${label} ${e.direction} ${e.url}${extra}`;
     }
     case 'interaction': {
       const val = e.value !== undefined ? ` value=${JSON.stringify(e.value)}` : '';
       const key = e.key ? ` key=${e.key}` : '';
-      out.push(`${h} ${e.action.toUpperCase()} ${describeHint(e.target)}${val}${key}`);
-      break;
+      return `${e.action.toUpperCase()} ${describeHint(e.target)}${val}${key}`;
     }
-    case 'navigation': {
-      out.push(`${h} NAV ${e.type} ${e.url}${e.fromUrl ? ` (from ${e.fromUrl})` : ''}`);
-      break;
-    }
+    case 'navigation':
+      return `NAV ${e.type} ${e.url}${e.fromUrl ? ` (from ${e.fromUrl})` : ''}`;
     case 'mutation': {
       const s = e.summary;
       const parts = `+${s.added} -${s.removed} attr:${s.attributes} text:${s.characterData}`;
       const tags = s.sampleAddedTags?.length ? ` added:[${s.sampleAddedTags.join(',')}]` : '';
-      out.push(`${h} DOM mutation (${parts})${tags}`);
-      break;
+      return `DOM mutation (${parts})${tags}`;
     }
-    case 'checkpoint': {
-      out.push(`${h} ◉ CHECKPOINT${e.label ? ` "${e.label}"` : ''}`);
-      break;
-    }
-    case 'mark': {
-      out.push(`${h} ✎ MARK "${e.note}"${e.element ? ` — ${e.element.startTag}` : ''}`);
-      break;
-    }
-    case 'perf': {
-      out.push(`${h} PERF ${perfLine(e)}`);
-      break;
-    }
+    case 'checkpoint':
+      return `◉ CHECKPOINT${e.label ? ` "${e.label}"` : ''}`;
+    case 'mark':
+      return `✎ MARK "${e.note}"${e.element ? ` — ${e.element.startTag}` : ''}`;
+    case 'perf':
+      return `PERF ${perfLine(e)}`;
+  }
+}
+
+function formatEvent(e: TimelineEvent, origin: number, paths: Record<string, string>): string[] {
+  const out: string[] = [`${head(e, origin)} ${summarizeEvent(e)}`];
+  if (e.kind === 'network') {
+    if (e.requestBody) out.push(`     request:  ${oneLine(e.requestBody)}`);
+    if (e.responseBody) out.push(`     response: ${oneLine(e.responseBody)}`);
+  } else if (e.kind === 'console') {
+    if (e.stackTop) out.push(`     at ${e.stackTop}`);
+  } else if (e.kind === 'error' || e.kind === 'unhandledrejection') {
+    if (e.stack) out.push(...indentStack(e.stack));
   }
   if (e.screenshotId && paths[e.screenshotId]) {
     out.push(`     ↳ screenshot: ${paths[e.screenshotId]}`);

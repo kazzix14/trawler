@@ -312,18 +312,66 @@ body {
   flex-direction: column;
 }
 .mark {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
   padding: 8px 0;
   border-top: 1px solid var(--line);
 }
 .mark:first-child {
   border-top: none;
 }
+.mark-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.mark-toggle {
+  flex: 0 0 auto;
+  align-self: center;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 2px;
+  line-height: 1;
+}
+.mark-toggle:hover {
+  color: var(--fg);
+}
 .mark-main {
   flex: 1;
   min-width: 0;
+  cursor: pointer;
+}
+.mark-detail {
+  margin: 6px 0 2px 18px;
+  border-top: 1px dashed var(--line);
+  padding-top: 6px;
+  max-height: 260px;
+  overflow: auto;
+}
+.mark-el {
+  margin: 0 0 6px;
+  font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--accent);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.mark-events {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mark-event-row {
+  font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mark-event-row:hover {
+  white-space: normal;
+  overflow: visible;
+  color: var(--fg);
 }
 .mark-note {
   font-weight: 600;
