@@ -1,14 +1,14 @@
 import { defineConfig } from 'wxt';
 
 // Firefox-only manifest additions. Chrome ignores `browser_specific_settings`
-// entirely, but `data_collection_permissions` is not yet in WXT's manifest
-// type, so this block is built untyped and spread in only for the firefox build.
+// entirely. This is a personal/unlisted extension (not for AMO), so we keep a
+// neutral gecko id and omit `data_collection_permissions` (only required for AMO
+// submission, and it conflicts with strict_min_version 128).
 const firefoxSettings = {
   browser_specific_settings: {
     gecko: {
-      id: 'trawler@twogate.com',
+      id: 'trawler@local',
       strict_min_version: '128.0', // world:'MAIN' + MV3 require Firefox 128+
-      data_collection_permissions: { required: ['none'] },
     },
   },
 } as Record<string, unknown>;
