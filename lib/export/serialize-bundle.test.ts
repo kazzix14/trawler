@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { serializeBundle } from './serialize-bundle';
-import type { ExportInput, MarkEvent, NetworkEvent, ConsoleEvent, PerfEvent } from '../types';
+import { serializeBundle, serializeMarks } from './serialize-bundle';
+import type {
+  ExportInput,
+  MarkEvent,
+  MarkRecord,
+  NetworkEvent,
+  ConsoleEvent,
+  PerfEvent,
+} from '../types';
 
 const t0 = 1_000_000;
 
@@ -58,6 +65,68 @@ function input(): ExportInput {
     generatedAtIso: '2026-06-02T08:00:00.000Z',
   };
 }
+
+describe('serializeMarks — mark-list format (note + that mark’s info)', () => {
+  const rec: MarkRecord = {
+    id: 'm1',
+    ts: t0 + 5000,
+    tabId: 1,
+    pageUrl: 'https://shop.myapp.com/booths/x',
+    note: 'page loads slowly',
+    element: {
+      startTag: '<main class="app">',
+      elidedOuterHtml: '<main class="app">...</main>',
+      selector: 'main.app',
+      classes: ['app'],
+      dataAttrs: {},
+      ariaAttrs: {},
+      htmlLine: 12,
+    },
+    screenshotId: 's1',
+    navStartTs: t0,
+    events: [
+      {
+        id: 'n0',
+        kind: 'perf',
+        ts: t0 + 100,
+        metric: 'navigation',
+        ttfbMs: 1221,
+        durationMs: 1843,
+        detail: 'ttfb=1221ms domInteractive=1249ms',
+      } as PerfEvent,
+      { id: 'c0', kind: 'console', ts: t0 + 200, level: 'log', args: ['[debounced-submit] connected'] } as ConsoleEvent,
+      { id: 'm1', kind: 'mark', ts: t0 + 5000, note: 'page loads slowly' } as MarkEvent,
+    ],
+  };
+
+  const out = serializeMarks({
+    records: [rec],
+    screenshotPaths: { s1: '/Downloads/trawler/m1.png' },
+    pageUrl: 'https://shop.myapp.com/booths/x',
+    generatedAtIso: '2026-06-02T08:00:00.000Z',
+  });
+
+  it('renders one block per mark: note heading + element + screenshot', () => {
+    expect(out).toContain('Marks:     1');
+    expect(out).toContain('Mark 1: "page loads slowly"');
+    expect(out).toContain('element:   L12: <main class="app">');
+    expect(out).toContain('selector:  main.app');
+    expect(out).toContain('screenshot: /Downloads/trawler/m1.png');
+  });
+
+  it("includes the mark's own performance + timeline, excluding the mark event itself", () => {
+    expect(out).toContain('Navigation: ttfb=1221ms');
+    expect(out).toContain('CONSOLE.log [debounced-submit] connected');
+    expect(out).toContain('timeline (2)');
+    expect(out).not.toContain('✎ MARK');
+  });
+
+  it('handles an empty mark list', () => {
+    const none = serializeMarks({ records: [], screenshotPaths: {}, pageUrl: 'x', generatedAtIso: 'x' });
+    expect(none).toContain('Marks:     0');
+    expect(none).toContain('(no marks)');
+  });
+});
 
 describe('serializeBundle — performance summary (server vs client signal)', () => {
   const nav: PerfEvent = {
@@ -137,9 +206,9 @@ describe('serializeBundle — performance summary (server vs client signal)', ()
 describe('serializeBundle', () => {
   const out = serializeBundle(input());
 
-  it('starts with the fact-only priming line', () => {
-    expect(out.startsWith('これはブラウザ検証から出たバグ報告です')).toBe(true);
-    expect(out).toContain('原因はまだ推論されていません');
+  it('starts directly with the capture header (no priming preamble)', () => {
+    expect(out.startsWith('== Trawler verification capture ==')).toBe(true);
+    expect(out).not.toContain('原因はまだ推論されていません');
   });
 
   it('includes header metadata', () => {

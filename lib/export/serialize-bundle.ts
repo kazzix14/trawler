@@ -4,13 +4,15 @@
  * holds no LLM — this only packages observed facts. Inference is left to the
  * consumer (Claude Code).
  */
-import type { ElementHint, ExportInput, MarkEvent, PerfEvent, TimelineEvent } from '../types';
+import type {
+  ElementHint,
+  ExportInput,
+  MarkEvent,
+  MarkRecord,
+  PerfEvent,
+  TimelineEvent,
+} from '../types';
 import { formatClock, formatDuration, formatOffset } from '../time';
-
-const PRIMING =
-  'これはブラウザ検証から出たバグ報告です。再現・診断・修正してください。' +
-  '以下の記録はブラウザ上で観測された事実のみで、原因はまだ推論されていません（あなたが推論してください）。' +
-  'スクリーンショットは別ファイルに保存され、本文にはパスのみ記載しています。';
 
 const BODY_ONE_LINE_MAX = 1000;
 const STACK_LINES_MAX = 6;
@@ -20,7 +22,6 @@ export function serializeBundle(input: ExportInput): string {
   const origin = win.startTs;
   const lines: string[] = [];
 
-  lines.push(PRIMING, '');
   lines.push('== Trawler verification capture ==');
   lines.push(`Page:      ${input.pageUrl}`);
   lines.push(
@@ -182,6 +183,70 @@ function collectScreenshots(input: ExportInput): ShotRow[] {
     rows.push({ ts: e.ts, label: e.kind, path });
   }
   return rows.sort((a, b) => a.ts - b.ts);
+}
+
+/**
+ * Mark-list format (ADR Decision 7): one block per mark — its note followed by
+ * that mark's own info (element, screenshot, performance, retained timeline).
+ * Used by the per-mark and "Copy all" exports.
+ */
+export function serializeMarks(input: {
+  records: MarkRecord[];
+  screenshotPaths: Record<string, string>;
+  pageUrl: string;
+  generatedAtIso: string;
+}): string {
+  const lines: string[] = [];
+  lines.push('== Trawler verification capture ==');
+  lines.push(`Page:      ${input.pageUrl}`);
+  lines.push(`Generated: ${input.generatedAtIso}`);
+  lines.push(`Marks:     ${input.records.length}`, '');
+
+  if (input.records.length === 0) {
+    lines.push('(no marks)');
+    return `${lines.join('\n')}\n`;
+  }
+
+  const sorted = [...input.records].sort((a, b) => a.ts - b.ts);
+  sorted.forEach((rec, i) => {
+    lines.push(...formatMarkBlock(rec, i + 1, input.screenshotPaths));
+    lines.push('');
+  });
+
+  return `${lines.join('\n')}\n`;
+}
+
+function formatMarkBlock(rec: MarkRecord, n: number, paths: Record<string, string>): string[] {
+  const out: string[] = [];
+  out.push(`═══ Mark ${n}: "${rec.note}"  [${formatClock(rec.ts)}] ═══`);
+
+  const el = rec.element;
+  if (el) {
+    out.push(`  element:   ${el.htmlLine ? `L${el.htmlLine}: ` : ''}${el.startTag}`);
+    if (el.leafText) out.push(`  text:      "${el.leafText}"`);
+    out.push(`  selector:  ${el.selector}`);
+    const data = Object.entries(el.dataAttrs);
+    if (data.length) out.push(`  data-*:    ${data.map(([k, v]) => `${k}="${v}"`).join(' ')}`);
+    const aria = Object.entries(el.ariaAttrs);
+    if (aria.length) out.push(`  aria/role: ${aria.map(([k, v]) => `${k}="${v}"`).join(' ')}`);
+  }
+  if (rec.screenshotId && paths[rec.screenshotId]) {
+    out.push(`  screenshot: ${paths[rec.screenshotId]}`);
+  }
+
+  // Performance scoped to this mark's window (indented under the mark).
+  for (const line of formatPerfSummary(rec.events)) {
+    if (line !== '') out.push(`  ${line}`);
+  }
+
+  // The mark's retained timeline (exclude the mark event itself).
+  const events = rec.events.filter((e) => e.kind !== 'mark');
+  out.push(`  timeline (${events.length}):`);
+  if (events.length === 0) out.push('    (none)');
+  for (const e of events) {
+    for (const line of formatEvent(e, rec.navStartTs, paths)) out.push(`    ${line}`);
+  }
+  return out;
 }
 
 /** One-line rendering of a perf event for the timeline. */

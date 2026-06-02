@@ -18,7 +18,7 @@ import type {
   Settings,
   TimelineEvent,
 } from '../types';
-import { serializeBundle } from '../export/serialize-bundle';
+import { serializeBundle, serializeMarks } from '../export/serialize-bundle';
 import { queryWindow } from './event-log';
 import { getMark } from './mark-store';
 import { getScreenshotDataUrl, getScreenshotMeta } from './screenshot-store';
@@ -50,40 +50,42 @@ export async function runExport(opts: RunExportOptions): Promise<ExportResult> {
   }
 }
 
-/** Serialize a single retained mark from its frozen snapshot (eviction-proof). */
+/** Serialize a single retained mark as a one-block mark list (eviction-proof). */
 export async function runExportMark(markId: string, settings: Settings): Promise<ExportResult> {
   try {
     const rec = await getMark(markId);
     if (!rec) return { ok: false, error: 'Mark not found (it may have been cleared).' };
-    const win: ExportWindow = {
-      startTs: rec.navStartTs,
-      endTs: rec.ts,
-      label: `mark "${rec.note}"`,
-    };
-    return await assemble(win, rec.note, rec.events, rec.pageUrl, settings);
+    return await assembleMarks([rec], settings);
   } catch (error: unknown) {
     return { ok: false, error: errorMessage(error) };
   }
 }
 
-/** Merge ALL retained marks for a tab into one bundle (their union timeline). */
+/** Serialize ALL retained marks for a tab as a mark list (one block per mark). */
 export async function runExportMarks(
   records: MarkRecord[],
   settings: Settings,
 ): Promise<ExportResult> {
   try {
     if (records.length === 0) return { ok: false, error: 'No marks to copy yet.' };
-    const byId = new Map<string, TimelineEvent>();
-    for (const rec of records) for (const e of rec.events) byId.set(e.id, e);
-    const events = [...byId.values()].sort((a, b) => a.ts - b.ts);
-    const startTs = Math.min(...records.map((r) => r.navStartTs));
-    const endTs = Math.max(...records.map((r) => r.ts));
-    const pageUrl = records[records.length - 1]?.pageUrl ?? '';
-    const win: ExportWindow = { startTs, endTs, label: `${records.length} marks` };
-    return await assemble(win, undefined, events, pageUrl, settings);
+    return await assembleMarks(records, settings);
   } catch (error: unknown) {
     return { ok: false, error: errorMessage(error) };
   }
+}
+
+/** Resolve screenshots across all the marks' events, then render the mark list. */
+async function assembleMarks(records: MarkRecord[], settings: Settings): Promise<ExportResult> {
+  const allEvents = records.flatMap((r) => r.events);
+  const screenshotPaths = await resolveScreenshots(allEvents, settings);
+  const pageUrl = records[records.length - 1]?.pageUrl ?? '';
+  const text = serializeMarks({
+    records,
+    screenshotPaths,
+    pageUrl,
+    generatedAtIso: new Date(now()).toISOString(),
+  });
+  return { ok: true, text, screenshotCount: Object.keys(screenshotPaths).length };
 }
 
 /** Resolve screenshots + serialize a set of events into a bundle. */
