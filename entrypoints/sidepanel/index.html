@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trawler</title>
+    <meta name="manifest.default_title" content="Trawler" />
+    <link rel="stylesheet" href="./sidepanel.css" />
+  </head>
+  <body>
+    <main class="panel">
+      <header class="hdr">
+        <span class="brand">🪤 Trawler</span>
+        <span class="hdr-actions">
+          <button id="refresh" class="link" type="button" title="Refresh">↻</button>
+          <button id="settings" class="link" type="button" title="Open settings">Settings</button>
+        </span>
+      </header>
+
+      <section id="ready" class="ready" hidden>
+        <div class="page">
+          <div class="page-url" id="page-url" title=""></div>
+          <div class="page-stats">
+            <span id="event-count">0 events</span>
+            <span class="dot">&middot;</span>
+            <span id="span"></span>
+          </div>
+        </div>
+
+        <!-- New mark: pick (optional) + note (required) -> Add mark -->
+        <section class="card">
+          <div class="card-head">New mark</div>
+          <textarea
+            id="note"
+            class="memo"
+            rows="2"
+            placeholder="What did you notice? (required)"
+          ></textarea>
+          <div class="pick-row">
+            <button id="pick" class="btn" type="button" aria-pressed="false">Pick element</button>
+            <div id="pending" class="pending" hidden>
+              <code id="pending-tag" class="pending-tag"></code>
+              <button id="clear-pick" class="link" type="button" title="Clear picked element">
+                ✕
+              </button>
+            </div>
+          </div>
+          <button id="add-mark" class="btn btn-primary" type="button" disabled>+ Add mark</button>
+        </section>
+
+        <!-- Accumulated marks; each is copyable on its own -->
+        <section class="card">
+          <div class="card-head">Marks <span id="marks-count">(0)</span></div>
+          <div id="marks-empty" class="empty">
+            No marks yet — pick an element (optional), write a note, then Add mark.
+          </div>
+          <ul id="marks-list" class="marks"></ul>
+        </section>
+
+        <!-- Whole-window copy (independent of marks) -->
+        <section class="card">
+          <div class="card-head">Copy a time window</div>
+          <fieldset class="window">
+            <label class="radio">
+              <input type="radio" name="mode" value="lastN" checked />
+              <span>Last</span>
+              <input id="last-n" class="num" type="number" min="1" step="1" />
+              <span>seconds</span>
+            </label>
+            <label class="radio">
+              <input type="radio" name="mode" value="checkpoint" />
+              <span>Since checkpoint</span>
+              <select id="checkpoint-select" class="select" disabled>
+                <option value="">No checkpoints yet</option>
+              </select>
+            </label>
+          </fieldset>
+          <div class="cp-row">
+            <input
+              id="checkpoint-label"
+              class="text"
+              type="text"
+              placeholder="Checkpoint label (optional)"
+              autocomplete="off"
+            />
+            <button id="checkpoint" class="btn" type="button">Checkpoint</button>
+          </div>
+          <button id="copy-window" class="btn" type="button">Copy window context</button>
+        </section>
+
+        <div id="status" class="note" role="status" aria-live="polite"></div>
+      </section>
+
+      <section id="unavailable" class="unavailable" hidden>
+        <p class="unavailable-msg">
+          Trawler is not available on this tab. Switch to a regular website tab —
+          this panel updates automatically.
+        </p>
+      </section>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

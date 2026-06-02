@@ -1,0 +1,2 @@
+minimumReleaseAgeExclude:
+  - '@webext-core/messaging@3.0.2'

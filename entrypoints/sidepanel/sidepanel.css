@@ -1,0 +1,371 @@
+:root {
+  --bg: #0f1417;
+  --bg-soft: #161d22;
+  --panel: #1b242b;
+  --line: #2a363f;
+  --fg: #e8eef1;
+  --muted: #9fb0ba;
+  --accent: #16a3bd;
+  --accent-strong: #0d6e84;
+  --ok: #2fae6f;
+  --err: #e8705a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  padding: 10px 12px 14px;
+  gap: 10px;
+}
+
+.hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+}
+
+.brand {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.hdr-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.link {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+.link:hover {
+  color: var(--fg);
+  background: var(--bg-soft);
+}
+
+.ready {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.page-url {
+  font-weight: 600;
+  word-break: break-all;
+  line-height: 1.3;
+}
+
+.page-stats {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 2px;
+}
+.dot {
+  margin: 0 6px;
+  opacity: 0.6;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.actions-row {
+  display: flex;
+  gap: 8px;
+}
+
+.text,
+.num,
+.select,
+.memo {
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  color: var(--fg);
+  border-radius: 7px;
+  padding: 7px 9px;
+  font: inherit;
+}
+.text {
+  width: 100%;
+}
+.num {
+  width: 68px;
+}
+.memo {
+  width: 100%;
+  resize: vertical;
+}
+
+.btn {
+  flex: 1;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--fg);
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+}
+.btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.btn.active {
+  border-color: var(--accent);
+  background: var(--accent-strong);
+}
+
+.btn-primary {
+  background: var(--accent-strong);
+  border-color: var(--accent);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent);
+}
+
+.window {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.window legend {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0 4px;
+}
+.radio {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.select {
+  flex: 1;
+  min-width: 0;
+}
+
+.scrubber {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.scrubber-head {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.thumbs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  min-height: 76px;
+}
+.empty {
+  color: var(--muted);
+  font-size: 12px;
+  align-self: center;
+}
+.thumb {
+  margin: 0;
+  flex: 0 0 auto;
+  width: 104px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-soft);
+}
+.thumb:hover {
+  border-color: var(--line);
+}
+.thumb.selected {
+  border-color: var(--accent);
+}
+.thumb img {
+  display: block;
+  width: 100%;
+  height: 60px;
+  object-fit: cover;
+  background: #000;
+}
+.thumb img.missing {
+  background: repeating-linear-gradient(45deg, #222, #222 6px, #2a2a2a 6px, #2a2a2a 12px);
+}
+.thumb figcaption {
+  font-size: 10px;
+  color: var(--muted);
+  padding: 3px 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.note {
+  min-height: 18px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.note[data-kind='ok'] {
+  color: var(--ok);
+}
+.note[data-kind='error'] {
+  color: var(--err);
+}
+
+.unavailable {
+  margin-top: 24px;
+  color: var(--muted);
+  text-align: center;
+  padding: 0 8px;
+}
+
+/* ── Cards ── */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.015);
+}
+.card-head {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+}
+
+/* ── New mark form ── */
+.pick-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.pending {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 4px 8px;
+}
+.pending-tag {
+  flex: 1;
+  min-width: 0;
+  font: 11px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Marks list ── */
+.marks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.mark {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+.mark:first-child {
+  border-top: none;
+}
+.mark-main {
+  flex: 1;
+  min-width: 0;
+}
+.mark-note {
+  font-weight: 600;
+  word-break: break-word;
+}
+.mark-meta {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mark-meta code {
+  font: 11px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--accent);
+}
+.mark-thumb {
+  flex: 0 0 auto;
+  width: 72px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 5px;
+  background: #000;
+  border: 1px solid var(--line);
+}
+.mark-thumb.missing {
+  background: repeating-linear-gradient(45deg, #222, #222 6px, #2a2a2a 6px, #2a2a2a 12px);
+}
+.mark-copy {
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+/* ── Checkpoint row ── */
+.cp-row {
+  display: flex;
+  gap: 8px;
+}
+.cp-row .text {
+  flex: 1;
+}
+.cp-row .btn {
+  flex: 0 0 auto;
+}

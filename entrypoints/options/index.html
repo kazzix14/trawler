@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trawler — Settings</title>
+    <link rel="stylesheet" href="./options.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="hdr">
+        <h1 class="brand">Trawler Settings</h1>
+        <p class="tagline">
+          Zero-instrumentation capture of console, network, interactions, DOM and
+          sockets. Tune how much is buffered, when screenshots fire, and which
+          network responses are worth keeping.
+        </p>
+      </header>
+
+      <form id="settings-form" novalidate>
+        <section class="card">
+          <h2>Capture window &amp; buffer</h2>
+          <p class="section-help">
+            Controls the rolling in-page buffer and the default export window.
+          </p>
+
+          <div class="field">
+            <label for="windowDefaultSec">Default export window (seconds)</label>
+            <input id="windowDefaultSec" name="windowDefaultSec" type="number" min="1" step="1" />
+            <p class="hint">The "last N seconds" preset offered when you copy context.</p>
+          </div>
+
+          <div class="field">
+            <label for="maxBufferSec">Max buffer age (seconds)</label>
+            <input id="maxBufferSec" name="maxBufferSec" type="number" min="1" step="1" />
+            <p class="hint">Events older than this are dropped from the rolling buffer.</p>
+          </div>
+
+          <div class="field">
+            <label for="maxBufferEvents">Max buffer size (events)</label>
+            <input id="maxBufferEvents" name="maxBufferEvents" type="number" min="1" step="1" />
+            <p class="hint">Hard cap on retained events; oldest are evicted first.</p>
+          </div>
+
+          <div class="field">
+            <label for="bodyMaxChars">Body truncation (characters)</label>
+            <input id="bodyMaxChars" name="bodyMaxChars" type="number" min="0" step="1" />
+            <p class="hint">Request / response / socket payloads are truncated to this length.</p>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Screenshots</h2>
+          <p class="section-help">
+            Screenshots are captured automatically on the selected triggers and
+            stored alongside the timeline.
+          </p>
+
+          <div class="field">
+            <label for="screenshotFormat">Image format</label>
+            <select id="screenshotFormat" name="screenshotFormat">
+              <option value="png">PNG (lossless, larger)</option>
+              <option value="jpeg">JPEG (smaller, lossy)</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="dedupWindowMs">Screenshot dedup window (ms)</label>
+            <input id="dedupWindowMs" name="dedupWindowMs" type="number" min="0" step="1" />
+            <p class="hint">Suppresses repeat screenshots for the same event within this window.</p>
+          </div>
+
+          <fieldset class="field triggers">
+            <legend>Screenshot triggers</legend>
+            <label class="check">
+              <input id="trigger-checkpoint" type="checkbox" />
+              <span>Checkpoint dropped</span>
+            </label>
+            <label class="check">
+              <input id="trigger-mark" type="checkbox" />
+              <span>Element marked (picker)</span>
+            </label>
+            <label class="check">
+              <input id="trigger-consoleError" type="checkbox" />
+              <span>Console / page error</span>
+            </label>
+            <label class="check">
+              <input id="trigger-network" type="checkbox" />
+              <span>Network response matched a capture rule</span>
+            </label>
+            <label class="check">
+              <input id="trigger-manual" type="checkbox" />
+              <span>Manual capture</span>
+            </label>
+          </fieldset>
+        </section>
+
+        <section class="card">
+          <h2>Privacy &amp; export</h2>
+
+          <div class="field">
+            <label class="check">
+              <input id="maskInputs" type="checkbox" />
+              <span>Mask values of password &amp; sensitive inputs</span>
+            </label>
+            <p class="hint">When on, sensitive field values are redacted in the interaction trace.</p>
+          </div>
+
+          <div class="field">
+            <label for="downloadSubdir">Downloads subdirectory</label>
+            <input id="downloadSubdir" name="downloadSubdir" type="text" autocomplete="off" spellcheck="false" />
+            <p class="hint">Folder under your Downloads directory for saved screenshots.</p>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Network capture rules</h2>
+          <p class="section-help">
+            Rules are evaluated top-down; the first match wins. Each rule may match
+            on <code>domain</code> (host glob), <code>path</code> (path glob or
+            <code>/regex/flags</code>) and <code>status</code>
+            (<code>5xx</code>, <code>4xx</code>, <code>429</code>,
+            <code>400-499</code>, or an exact code). <code>default</code> is applied
+            when nothing matches.
+          </p>
+          <details class="example">
+            <summary>Example configuration</summary>
+            <pre class="example-code">{
+  "rules": [
+    { "domain": "*.analytics.com", "action": "ignore" },
+    { "path": "/health", "action": "ignore" },
+    { "status": "5xx", "action": "capture" },
+    { "status": "4xx", "action": "capture" }
+  ],
+  "default": "ignore"
+}</pre>
+          </details>
+
+          <div class="field">
+            <label for="captureRules">Rules (JSON)</label>
+            <textarea
+              id="captureRules"
+              name="captureRules"
+              class="code"
+              rows="14"
+              spellcheck="false"
+              aria-describedby="captureRules-error"
+            ></textarea>
+            <p id="captureRules-error" class="error" role="alert" hidden></p>
+          </div>
+        </section>
+
+        <div class="actions">
+          <button id="save" class="btn btn-primary" type="submit">Save</button>
+          <button id="reset" class="btn" type="button">Reset to defaults</button>
+        </div>
+      </form>
+
+      <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

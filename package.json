@@ -1,0 +1,31 @@
+{
+  "name": "trawler",
+  "version": "1.0.0",
+  "description": "Zero-instrumentation browser verification context capture extension for Chrome (MV3) and Firefox. Records console / network / interactions / DOM mutations / WebSocket as a rolling timeline and exports a single fact-only text bundle for Claude Code.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "wxt",
+    "dev:firefox": "wxt -b firefox",
+    "build": "wxt build",
+    "build:firefox": "wxt build -b firefox",
+    "zip": "wxt zip",
+    "zip:firefox": "wxt zip -b firefox",
+    "compile": "tsc --noEmit",
+    "postinstall": "wxt prepare",
+    "icons": "node scripts/gen-icons.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@webext-core/messaging": "^3.0.2"
+  },
+  "devDependencies": {
+    "wxt": "0.20.26",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.9",
+    "@vitest/coverage-v8": "^2.1.9",
+    "jsdom": "^25.0.1"
+  }
+}
