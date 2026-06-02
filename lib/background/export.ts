@@ -14,6 +14,7 @@ import type {
   ExportResult,
   ExportWindow,
   MarkEvent,
+  MarkRecord,
   Settings,
   TimelineEvent,
 } from '../types';
@@ -60,6 +61,26 @@ export async function runExportMark(markId: string, settings: Settings): Promise
       label: `mark "${rec.note}"`,
     };
     return await assemble(win, rec.note, rec.events, rec.pageUrl, settings);
+  } catch (error: unknown) {
+    return { ok: false, error: errorMessage(error) };
+  }
+}
+
+/** Merge ALL retained marks for a tab into one bundle (their union timeline). */
+export async function runExportMarks(
+  records: MarkRecord[],
+  settings: Settings,
+): Promise<ExportResult> {
+  try {
+    if (records.length === 0) return { ok: false, error: 'No marks to copy yet.' };
+    const byId = new Map<string, TimelineEvent>();
+    for (const rec of records) for (const e of rec.events) byId.set(e.id, e);
+    const events = [...byId.values()].sort((a, b) => a.ts - b.ts);
+    const startTs = Math.min(...records.map((r) => r.navStartTs));
+    const endTs = Math.max(...records.map((r) => r.ts));
+    const pageUrl = records[records.length - 1]?.pageUrl ?? '';
+    const win: ExportWindow = { startTs, endTs, label: `${records.length} marks` };
+    return await assemble(win, undefined, events, pageUrl, settings);
   } catch (error: unknown) {
     return { ok: false, error: errorMessage(error) };
   }

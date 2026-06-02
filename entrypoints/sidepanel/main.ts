@@ -17,7 +17,7 @@ import { browser } from '#imports';
 import { sendMessage } from '../../lib/messaging';
 import { getSettings } from '../../lib/settings';
 import { getScreenshotDataUrl } from '../../lib/background/screenshot-store';
-import { listMarks } from '../../lib/background/mark-store';
+import { clearMarks, deleteMark, listMarks } from '../../lib/background/mark-store';
 import { summarizeEvent } from '../../lib/export/serialize-bundle';
 import { formatClock, formatDuration, now } from '../../lib/time';
 import type {
@@ -28,7 +28,7 @@ import type {
   Settings,
 } from '../../lib/types';
 
-type WindowMode = 'lastN' | 'checkpoint' | 'pages';
+type WindowMode = 'lastN' | 'checkpoint' | 'pages' | 'cue';
 
 const REFRESH_INTERVAL_MS = 1000;
 const NOTE_TIMEOUT_MS = 6000;
@@ -67,6 +67,10 @@ const els = {
   checkpointLabel: $<HTMLInputElement>('checkpoint-label'),
   checkpoint: $<HTMLButtonElement>('checkpoint'),
   copyWindow: $<HTMLButtonElement>('copy-window'),
+  clearTimeline: $<HTMLButtonElement>('clear-timeline'),
+  copyAll: $<HTMLButtonElement>('copy-all'),
+  clearMarksBtn: $<HTMLButtonElement>('clear-marks'),
+  cueLabel: $<HTMLElement>('cue-label'),
   status: $<HTMLElement>('status'),
 };
 
@@ -152,6 +156,8 @@ function render(snap: PanelSnapshot, marks: MarkRecord[]): void {
   els.pagesHint.textContent = snap.navigations.length
     ? `(${snap.navigations.length} navigations buffered)`
     : '(no navigation recorded yet)';
+  els.cueLabel.textContent =
+    snap.cueTs != null ? `Since cleared (${formatClock(snap.cueTs)})` : 'Since cleared point';
 
   if (snap.pickerActive !== lastPickerActive) {
     updatePickLabel(snap.pickerActive);
@@ -284,6 +290,15 @@ function buildMarkItem(mark: MarkRecord): HTMLElement {
   copy.addEventListener('click', () => void emitExport(sendMessage('exportMark', { markId: mark.id })));
   row.appendChild(copy);
 
+  const del = document.createElement('button');
+  del.className = 'link mark-delete';
+  del.type = 'button';
+  del.textContent = '✕';
+  del.title = 'Delete this mark';
+  del.setAttribute('aria-label', 'Delete mark');
+  del.addEventListener('click', () => void deleteMarkItem(mark));
+  row.appendChild(del);
+
   li.appendChild(row);
 
   const detail = buildMarkDetail(mark);
@@ -356,6 +371,8 @@ function setMode(mode: WindowMode): void {
     const radio = document.querySelector<HTMLInputElement>(`input[name="mode"][value="${value}"]`);
     if (radio) radio.checked = mode === value;
   }
+  const cueRadio = document.querySelector<HTMLInputElement>('input[name="mode"][value="cue"]');
+  if (cueRadio) cueRadio.checked = mode === 'cue';
   els.lastN.disabled = mode !== 'lastN';
   els.pagesN.disabled = mode !== 'pages';
   const hasCheckpoints = (state.snapshot?.checkpoints.length ?? 0) > 0;
@@ -440,11 +457,17 @@ async function onAddMark(): Promise<void> {
     showStatus('No active tab', 'error');
     return;
   }
+  const win = resolveWindow();
+  if ('error' in win) {
+    showStatus(win.error, 'error');
+    return;
+  }
   els.addMark.disabled = true;
   try {
-    await sendMessage('addMark', { note }, state.tabId);
+    // The mark retains the selected window [startTs, now] frozen.
+    await sendMessage('addMark', { note, startTs: win.startTs }, state.tabId);
     els.note.value = '';
-    showStatus('Mark added', 'ok');
+    showStatus(`Mark added (${win.label})`, 'ok');
     await refresh();
   } catch (error) {
     showStatus(`Could not add mark: ${errMessage(error)}`, 'error');
@@ -472,49 +495,90 @@ async function onCheckpoint(): Promise<void> {
   }
 }
 
-function onCopyWindow(): void {
-  const endTs = now();
+/**
+ * Resolve the extraction window START from the current mode. Used by BOTH the
+ * window copy AND mark creation — so the time-window setting drives what a mark
+ * captures, exactly as the user expects.
+ */
+function resolveWindow(): { startTs: number; label: string } | { error: string } {
+  const snap = state.snapshot;
   if (state.mode === 'lastN') {
     const seconds = Number(els.lastN.value);
-    if (!Number.isFinite(seconds) || seconds <= 0) {
-      showStatus('Enter a positive number of seconds', 'error');
-      return;
-    }
-    void emitExport(
-      sendMessage('exportContext', {
-        window: { startTs: endTs - seconds * 1000, endTs, label: `last ${seconds}s` },
-      }),
-    );
-    return;
+    if (!Number.isFinite(seconds) || seconds <= 0) return { error: 'Enter a positive number of seconds' };
+    return { startTs: now() - seconds * 1000, label: `last ${seconds}s` };
   }
-
   if (state.mode === 'pages') {
-    const navs = state.snapshot?.navigations ?? [];
+    const navs = snap?.navigations ?? [];
     if (navs.length === 0) {
-      showStatus('No navigation recorded yet on this tab', 'error');
-      return;
+      return {
+        startTs: now() - (state.settings?.windowDefaultSec ?? 300) * 1000,
+        label: 'this page',
+      };
     }
     const n = Math.max(1, Math.floor(Number(els.pagesN.value) || 1));
     const idx = Math.max(0, navs.length - n);
     const pagesBack = navs.length - idx;
-    const label = pagesBack === 1 ? 'this page' : `last ${pagesBack} pages`;
-    void emitExport(
-      sendMessage('exportContext', { window: { startTs: navs[idx].ts, endTs, label } }),
-    );
-    return;
+    return { startTs: navs[idx].ts, label: pagesBack === 1 ? 'this page' : `last ${pagesBack} pages` };
   }
-
+  if (state.mode === 'cue') {
+    if (snap?.cueTs == null) return { error: 'No cue yet — click “Clear timeline” first' };
+    return { startTs: snap.cueTs, label: `since cleared ${formatClock(snap.cueTs)}` };
+  }
   const selected = els.checkpointSelect.selectedOptions[0];
   const cpTs = selected ? Number(selected.dataset.ts) : NaN;
   if (!selected || !selected.value || !Number.isFinite(cpTs)) {
-    showStatus('Select a checkpoint first', 'error');
+    return { error: 'Select a checkpoint first' };
+  }
+  return { startTs: cpTs, label: `since checkpoint (${selected.textContent ?? ''})` };
+}
+
+function onCopyWindow(): void {
+  const win = resolveWindow();
+  if ('error' in win) {
+    showStatus(win.error, 'error');
     return;
   }
   void emitExport(
     sendMessage('exportContext', {
-      window: { startTs: cpTs, endTs, label: `since checkpoint (${selected.textContent ?? ''})` },
+      window: { startTs: win.startTs, endTs: now(), label: win.label },
     }),
   );
+}
+
+function onCopyAllMarks(): void {
+  void emitExport(sendMessage('exportMarks'));
+}
+
+async function onClearTimeline(): Promise<void> {
+  if (!(await syncActiveTab()) || state.tabId == null) {
+    showStatus('No active tab', 'error');
+    return;
+  }
+  try {
+    await sendMessage('clearTimeline', undefined, state.tabId);
+    setMode('cue');
+    showStatus('Cue set — marks & window now extract from here', 'ok');
+    await refresh();
+  } catch (error) {
+    showStatus(`Could not set cue: ${errMessage(error)}`, 'error');
+  }
+}
+
+async function onClearMarks(): Promise<void> {
+  if (state.marks.length === 0) {
+    showStatus('No marks to clear', 'info');
+    return;
+  }
+  if (!window.confirm(`Delete all ${state.marks.length} marks in this list?`)) return;
+  if (!(await syncActiveTab()) || state.tabId == null) return;
+  try {
+    await clearMarks(state.tabId);
+    state.expanded.clear();
+    showStatus('Marks cleared', 'ok');
+    await refresh();
+  } catch (error) {
+    showStatus(`Could not clear marks: ${errMessage(error)}`, 'error');
+  }
 }
 
 /** Await an export, write it to the clipboard, and report the outcome. */
@@ -539,6 +603,18 @@ async function emitExport(promise: Promise<ExportResult>): Promise<void> {
     );
   } catch (error) {
     showStatus(`Export failed: ${errMessage(error)}`, 'error');
+  }
+}
+
+async function deleteMarkItem(mark: MarkRecord): Promise<void> {
+  if (!window.confirm(`Delete mark “${mark.note}”? This removes its retained timeline.`)) return;
+  try {
+    await deleteMark(mark.id);
+    state.expanded.delete(mark.id);
+    showStatus('Mark deleted', 'ok');
+    await refresh();
+  } catch (error) {
+    showStatus(`Could not delete mark: ${errMessage(error)}`, 'error');
   }
 }
 
@@ -576,6 +652,9 @@ function wireEvents(): void {
   els.addMark.addEventListener('click', () => void onAddMark());
   els.checkpoint.addEventListener('click', () => void onCheckpoint());
   els.copyWindow.addEventListener('click', () => onCopyWindow());
+  els.clearTimeline.addEventListener('click', () => void onClearTimeline());
+  els.copyAll.addEventListener('click', () => onCopyAllMarks());
+  els.clearMarksBtn.addEventListener('click', () => void onClearMarks());
 
   els.note.addEventListener('input', syncAddMarkEnabled);
   els.note.addEventListener('keydown', (ev) => {

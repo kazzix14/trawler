@@ -50,7 +50,17 @@
 
         <!-- Accumulated marks; each is copyable on its own -->
         <section class="card">
-          <div class="card-head">Marks <span id="marks-count">(0)</span></div>
+          <div class="card-head">
+            <span>Marks <span id="marks-count">(0)</span></span>
+            <span class="head-actions">
+              <button id="copy-all" class="link" type="button" title="Copy all marks as one bundle">
+                Copy all
+              </button>
+              <button id="clear-marks" class="link" type="button" title="Delete all marks">
+                Clear
+              </button>
+            </span>
+          </div>
           <div id="marks-empty" class="empty">
             No marks yet — pick an element (optional), write a note, then Add mark.
           </div>
@@ -81,7 +91,19 @@
               <span>page(s)</span>
               <span id="pages-hint" class="pages-hint"></span>
             </label>
+            <label class="radio">
+              <input type="radio" name="mode" value="cue" />
+              <span id="cue-label">Since cleared point</span>
+            </label>
           </fieldset>
+          <button
+            id="clear-timeline"
+            class="btn"
+            type="button"
+            title="Set a start cue — marks &amp; window copy extract from here. Does NOT delete recorded events."
+          >
+            ⎚ Clear timeline (start from here)
+          </button>
           <div class="cp-row">
             <input
               id="checkpoint-label"

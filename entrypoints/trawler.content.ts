@@ -58,12 +58,6 @@ export default defineContentScript({
       trigger.consider(e);
     };
 
-    // Start of the mark's page = the latest navigation at/before the mark.
-    const pageStartTs = (markTs: number): number => {
-      const navs = store.navigations().filter((n) => n.ts <= markTs);
-      if (navs.length > 0) return navs[navs.length - 1].ts;
-      return markTs - settings.windowDefaultSec * 1000;
-    };
 
     const receiver = createRelayReceiver({ onEvent, bodyMaxChars: settings.bodyMaxChars });
     const interactions = createInteractionTracker({ onEvent, maskInputs: settings.maskInputs });
@@ -72,6 +66,8 @@ export default defineContentScript({
     // Picked-but-not-yet-marked element. The picker only STAGES the element;
     // it becomes a mark when the user adds a note in the side panel.
     let pendingPick: MarkedElement | null = null;
+    // "Start here" cue (Clear timeline). Marks/exports may extract from here.
+    let cueTs: number | null = null;
     const picker = createElementPicker({
       onMark: (element: MarkedElement) => {
         pendingPick = element;
@@ -105,6 +101,7 @@ export default defineContentScript({
       ...store.summary(location.href),
       pickerActive: picker.active,
       pendingPick,
+      cueTs,
     }));
     onMessage('addCheckpoint', ({ data }) => {
       const id = uid();
@@ -134,9 +131,10 @@ export default defineContentScript({
         // Screenshot is best-effort.
       }
 
-      // Freeze this page's timeline up to the mark and persist it durably, so
-      // per-mark copy survives buffer eviction / reload / SW restart.
-      const navStartTs = pageStartTs(ts);
+      // Freeze the chosen window up to the mark and persist it durably, so the
+      // mark survives buffer eviction / reload / SW restart. The window start is
+      // chosen by the panel's current time-window setting.
+      const navStartTs = Math.max(0, Math.min(data.startTs, ts));
       const record: MarkRecord = {
         id,
         ts,
@@ -158,6 +156,11 @@ export default defineContentScript({
     onMessage('clearPick', () => {
       pendingPick = null;
       return { ok: true } as const;
+    });
+    onMessage('clearTimeline', () => {
+      // A non-destructive cue: future marks/exports can start from here.
+      cueTs = now();
+      return { cueTs };
     });
     onMessage('setPicker', ({ data }) => {
       if (data.active === undefined) picker.toggle();

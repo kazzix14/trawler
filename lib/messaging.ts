@@ -28,8 +28,10 @@ export interface ProtocolMap {
 
   // side panel → background
   exportContext(data: { window: ExportWindow; memo?: string }): ExportResult;
-  /** Build a self-contained bundle from a retained mark's snapshot. */
+  /** Build a self-contained bundle from a single retained mark's snapshot. */
   exportMark(data: { markId: string }): ExportResult;
+  /** Build one bundle from ALL retained marks for the active tab. */
+  exportMarks(): ExportResult;
 
   // background → content (requires tabId)
   collectTimeline(data: { startTs: number; endTs: number }): {
@@ -40,10 +42,13 @@ export interface ProtocolMap {
   // side panel → content (requires tabId)
   getTimelineSummary(): PanelSnapshot;
   addCheckpoint(data: { label?: string }): { id: string };
-  /** Create a mark from a required note + the current pending pick (if any). */
-  addMark(data: { note: string }): { id: string };
+  /** Create a mark from a required note + pending pick, retaining the timeline
+   * window [startTs, now] (startTs is chosen by the panel's window setting). */
+  addMark(data: { note: string; startTs: number }): { id: string };
   /** Discard the pending pick without creating a mark. */
   clearPick(): { ok: true };
+  /** Set the "start here" cue (does NOT delete recorded events). */
+  clearTimeline(): { cueTs: number };
   /** `active` omitted = toggle. Returns the resulting state. */
   setPicker(data: { active?: boolean }): { active: boolean };
 }

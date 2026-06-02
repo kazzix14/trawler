@@ -53,3 +53,22 @@ export async function deleteMark(id: string): Promise<void> {
     tx.onabort = () => reject(tx.error ?? new Error('deleteMark aborted'));
   });
 }
+
+/** Delete every mark belonging to a tab. */
+export async function clearMarks(tabId: number): Promise<void> {
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    const store = tx.objectStore(STORE);
+    const cursor = store.index(BY_TAB_INDEX).openKeyCursor(IDBKeyRange.only(tabId));
+    cursor.onsuccess = () => {
+      const cur = cursor.result;
+      if (!cur) return;
+      store.delete(cur.primaryKey);
+      cur.continue();
+    };
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error('clearMarks failed'));
+    tx.onabort = () => reject(tx.error ?? new Error('clearMarks aborted'));
+  });
+}

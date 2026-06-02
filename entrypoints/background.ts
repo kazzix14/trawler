@@ -8,8 +8,8 @@ import type { ScreenshotMeta } from '../lib/types';
 import { createCapturer } from '../lib/background/screenshot';
 import { putScreenshot, pruneScreenshots } from '../lib/background/screenshot-store';
 import { appendEvents, pruneEvents } from '../lib/background/event-log';
-import { runExport, runExportMark } from '../lib/background/export';
-import { putMark } from '../lib/background/mark-store';
+import { runExport, runExportMark, runExportMarks } from '../lib/background/export';
+import { listMarks, putMark } from '../lib/background/mark-store';
 
 const SCREENSHOT_MIN_INTERVAL_MS = 550; // captureVisibleTab is hard-capped at 2/sec
 const PRUNE_INTERVAL_MS = 60_000;
@@ -86,6 +86,13 @@ export default defineBackground({
     onMessage('exportMark', async ({ data }) => {
       const settings = await getSettings();
       return runExportMark(data.markId, settings);
+    });
+
+    onMessage('exportMarks', async () => {
+      const settings = await getSettings();
+      const tab = await activeTab();
+      if (!tab?.id) return { ok: false, error: 'No active tab.' };
+      return runExportMarks(await listMarks(tab.id), settings);
     });
 
     // Side panel open behaviour. Chrome (`sidePanel`) and Firefox

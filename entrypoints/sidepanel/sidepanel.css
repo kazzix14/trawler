@@ -273,6 +273,20 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.head-actions {
+  display: flex;
+  gap: 6px;
+}
+.head-actions .link {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+  font-size: 11px;
 }
 
 /* ── New mark form ── */
@@ -404,6 +418,15 @@ body {
 .mark-copy {
   flex: 0 0 auto;
   align-self: center;
+}
+.mark-delete {
+  flex: 0 0 auto;
+  align-self: center;
+  font-size: 12px;
+}
+.mark-delete:hover {
+  color: var(--err);
+  background: none;
 }
 
 .pages-hint {

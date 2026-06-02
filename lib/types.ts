@@ -383,4 +383,6 @@ export interface PanelSnapshot extends TimelineSummary {
   pickerActive: boolean;
   /** Element picked but not yet attached to a mark (awaiting a note). */
   pendingPick: MarkedElement | null;
+  /** "Start here" cue set by Clear timeline; extraction start for the cue mode. */
+  cueTs: number | null;
 }
