@@ -5,6 +5,7 @@ import { installSocketHooks } from '../lib/page/socket-hooks';
 import { installConsoleHooks } from '../lib/page/console-hooks';
 import { installErrorHooks } from '../lib/page/error-hooks';
 import { installHistoryHooks } from '../lib/page/history-hooks';
+import { installPerfHooks } from '../lib/page/perf-hooks';
 
 /**
  * MAIN-world hooks (page JS realm — NO extension APIs). Injected by the
@@ -23,4 +24,5 @@ export default defineUnlistedScript(() => {
   installConsoleHooks(relay);
   installErrorHooks(relay);
   installHistoryHooks(relay);
+  installPerfHooks(relay);
 });

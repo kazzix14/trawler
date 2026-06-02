@@ -358,6 +358,12 @@ body {
   align-self: center;
 }
 
+.pages-hint {
+  color: var(--muted);
+  font-size: 10px;
+  width: 100%;
+}
+
 /* ── Checkpoint row ── */
 .cp-row {
   display: flex;

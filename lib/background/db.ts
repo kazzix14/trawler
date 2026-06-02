@@ -15,11 +15,13 @@
 export const DB_NAME = 'trawler';
 
 /** Schema version. Bump only alongside an onupgradeneeded migration. */
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 const SCREENSHOTS_STORE = 'screenshots';
 const EVENTS_STORE = 'events';
 const EVENTS_TAB_TS_INDEX = 'by_tab_ts';
+const MARKS_STORE = 'marks';
+const MARKS_TAB_INDEX = 'by_tab';
 
 /** Cached connection promise — lazily created on first openDb() call. */
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -45,6 +47,10 @@ export function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(EVENTS_STORE)) {
         const events = db.createObjectStore(EVENTS_STORE, { keyPath: 'id' });
         events.createIndex(EVENTS_TAB_TS_INDEX, ['tabId', 'ts']);
+      }
+      if (!db.objectStoreNames.contains(MARKS_STORE)) {
+        const marks = db.createObjectStore(MARKS_STORE, { keyPath: 'id' });
+        marks.createIndex(MARKS_TAB_INDEX, 'tabId');
       }
     };
 

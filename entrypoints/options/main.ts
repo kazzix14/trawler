@@ -35,6 +35,7 @@ function populate(s: Settings): void {
   }
   byId<HTMLSelectElement>('screenshotFormat').value = s.screenshotFormat;
   byId<HTMLInputElement>('maskInputs').checked = s.maskInputs;
+  byId<HTMLInputElement>('capturePerf').checked = s.capturePerf;
   byId<HTMLInputElement>('downloadSubdir').value = s.downloadSubdir;
 
   for (const key of triggerKeys) {
@@ -149,6 +150,7 @@ function collectSettings(): Settings | null {
     screenshotTriggers: readTriggers(),
     captureRules,
     maskInputs: byId<HTMLInputElement>('maskInputs').checked,
+    capturePerf: byId<HTMLInputElement>('capturePerf').checked,
     downloadSubdir: byId<HTMLInputElement>('downloadSubdir').value.trim(),
   };
 }

@@ -19,6 +19,7 @@ import type {
 } from '../types';
 import { serializeBundle } from '../export/serialize-bundle';
 import { queryWindow } from './event-log';
+import { getMark } from './mark-store';
 import { getScreenshotDataUrl, getScreenshotMeta } from './screenshot-store';
 import { saveDataUrl } from './downloads';
 
@@ -35,35 +36,59 @@ interface LiveTimeline {
   pageUrl: string;
 }
 
-/** Collect, merge, resolve and serialize a verification capture. */
+/** Collect (live + durable), merge, resolve and serialize a window capture. */
 export async function runExport(opts: RunExportOptions): Promise<ExportResult> {
   try {
     const { startTs, endTs } = opts.window;
     const live = await collectLive(opts.tabId, startTs, endTs);
     const durable = await collectDurable(opts.tabId, startTs, endTs);
-
     const merged = mergeEvents(live.events, durable);
-    const marks = merged.filter((e): e is MarkEvent => e.kind === 'mark');
-    const screenshotPaths = await resolveScreenshots(merged, opts.settings);
-
-    const input: ExportInput = {
-      window: opts.window,
-      memo: opts.memo,
-      events: merged,
-      marks,
-      screenshotPaths,
-      pageUrl: live.pageUrl || '',
-      generatedAtIso: new Date(now()).toISOString(),
-    };
-
-    return {
-      ok: true,
-      text: serializeBundle(input),
-      screenshotCount: Object.keys(screenshotPaths).length,
-    };
+    return await assemble(opts.window, opts.memo, merged, live.pageUrl || '', opts.settings);
   } catch (error: unknown) {
     return { ok: false, error: errorMessage(error) };
   }
+}
+
+/** Serialize a single retained mark from its frozen snapshot (eviction-proof). */
+export async function runExportMark(markId: string, settings: Settings): Promise<ExportResult> {
+  try {
+    const rec = await getMark(markId);
+    if (!rec) return { ok: false, error: 'Mark not found (it may have been cleared).' };
+    const win: ExportWindow = {
+      startTs: rec.navStartTs,
+      endTs: rec.ts,
+      label: `mark "${rec.note}"`,
+    };
+    return await assemble(win, rec.note, rec.events, rec.pageUrl, settings);
+  } catch (error: unknown) {
+    return { ok: false, error: errorMessage(error) };
+  }
+}
+
+/** Resolve screenshots + serialize a set of events into a bundle. */
+async function assemble(
+  win: ExportWindow,
+  memo: string | undefined,
+  events: TimelineEvent[],
+  pageUrl: string,
+  settings: Settings,
+): Promise<ExportResult> {
+  const marks = events.filter((e): e is MarkEvent => e.kind === 'mark');
+  const screenshotPaths = await resolveScreenshots(events, settings);
+  const input: ExportInput = {
+    window: win,
+    memo,
+    events,
+    marks,
+    screenshotPaths,
+    pageUrl,
+    generatedAtIso: new Date(now()).toISOString(),
+  };
+  return {
+    ok: true,
+    text: serializeBundle(input),
+    screenshotCount: Object.keys(screenshotPaths).length,
+  };
 }
 
 /** Ask the tab's content script for its in-memory timeline; tolerate absence. */

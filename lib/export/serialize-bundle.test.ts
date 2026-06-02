@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { serializeBundle } from './serialize-bundle';
-import type { ExportInput, MarkEvent, NetworkEvent, ConsoleEvent } from '../types';
+import type { ExportInput, MarkEvent, NetworkEvent, ConsoleEvent, PerfEvent } from '../types';
 
 const t0 = 1_000_000;
 
@@ -58,6 +58,81 @@ function input(): ExportInput {
     generatedAtIso: '2026-06-02T08:00:00.000Z',
   };
 }
+
+describe('serializeBundle — performance summary (server vs client signal)', () => {
+  const nav: PerfEvent = {
+    id: 'p0',
+    kind: 'perf',
+    ts: t0 + 100,
+    metric: 'navigation',
+    url: 'https://shop.myapp.com/booths/x',
+    ttfbMs: 22,
+    durationMs: 5065,
+    detail: 'ttfb=22ms domInteractive=5008ms domComplete=5065ms load=5065ms type=reload',
+  };
+  const slow: PerfEvent = {
+    id: 'p1',
+    kind: 'perf',
+    ts: t0 + 200,
+    metric: 'resource',
+    url: 'https://api.myapp.com/booths/x/items',
+    initiatorType: 'fetch',
+    ttfbMs: 4980,
+    durationMs: 5020,
+    transferSize: 41000,
+  };
+  const fast: PerfEvent = {
+    id: 'p2',
+    kind: 'perf',
+    ts: t0 + 300,
+    metric: 'resource',
+    url: 'https://cdn.myapp.com/app.js',
+    initiatorType: 'script',
+    ttfbMs: 30,
+    durationMs: 120,
+  };
+  const longtask: PerfEvent = { id: 'p3', kind: 'perf', ts: t0 + 400, metric: 'longtask', durationMs: 220 };
+
+  const out = serializeBundle({
+    window: { startTs: t0, endTs: t0 + 6000, label: 'x' },
+    events: [nav, slow, fast, longtask],
+    marks: [],
+    screenshotPaths: {},
+    pageUrl: 'https://shop.myapp.com/booths/x',
+    generatedAtIso: '2026-06-02T08:00:00.000Z',
+  });
+
+  it('emits a Performance section with navigation timing', () => {
+    expect(out).toContain('--- Performance ---');
+    expect(out).toContain('Navigation: ttfb=22ms domInteractive=5008ms');
+  });
+
+  it('ranks the slow N+1-style request first by TTFB and labels it server time', () => {
+    expect(out).toContain('Slowest requests by server time (TTFB)');
+    expect(out).toContain('https://api.myapp.com/booths/x/items');
+    expect(out).toContain('TTFB 4980ms');
+    const idxSlow = out.indexOf('/booths/x/items');
+    const idxFast = out.indexOf('app.js');
+    expect(idxSlow).toBeGreaterThan(-1);
+    expect(idxSlow).toBeLessThan(idxFast); // slow request listed before the fast one
+  });
+
+  it('reports long-task blocking time', () => {
+    expect(out).toContain('Long tasks: 1 (total 220ms');
+  });
+
+  it('omits the Performance section when there are no perf events', () => {
+    const none = serializeBundle({
+      window: { startTs: t0, endTs: t0 + 1000 },
+      events: [],
+      marks: [],
+      screenshotPaths: {},
+      pageUrl: 'x',
+      generatedAtIso: 'x',
+    });
+    expect(none).not.toContain('--- Performance ---');
+  });
+});
 
 describe('serializeBundle', () => {
   const out = serializeBundle(input());

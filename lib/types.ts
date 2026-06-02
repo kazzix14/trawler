@@ -21,7 +21,8 @@ export type EventKind =
   | 'navigation'
   | 'mutation'
   | 'checkpoint'
-  | 'mark';
+  | 'mark'
+  | 'perf';
 
 export type ConsoleLevel = 'log' | 'info' | 'warn' | 'error' | 'debug';
 
@@ -148,6 +149,23 @@ export interface MarkEvent extends BaseEvent {
   element?: MarkedElement;
 }
 
+/** Performance metrics captured via PerformanceObserver (server vs client signal). */
+export type PerfMetric = 'navigation' | 'resource' | 'longtask' | 'lcp' | 'cls' | 'paint';
+
+export interface PerfEvent extends BaseEvent {
+  kind: 'perf';
+  metric: PerfMetric;
+  url?: string;
+  initiatorType?: string;
+  /** Server think time = responseStart − requestStart. Big TTFB ⇒ server slow. */
+  ttfbMs?: number;
+  durationMs?: number;
+  transferSize?: number;
+  /** Scalar value for lcp (ms) / cls (score) / paint (ms). */
+  value?: number;
+  detail?: string;
+}
+
 export type TimelineEvent =
   | ConsoleEvent
   | NetworkEvent
@@ -158,7 +176,8 @@ export type TimelineEvent =
   | NavigationEvent
   | MutationEvent
   | CheckpointEvent
-  | MarkEvent;
+  | MarkEvent
+  | PerfEvent;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Element descriptors (ADR Decision 4)
@@ -271,6 +290,8 @@ export interface Settings {
   bodyMaxChars: number;
   /** Subdirectory under the Downloads folder for screenshots. */
   downloadSubdir: string;
+  /** Capture PerformanceObserver metrics (navigation/resource/longtask/LCP/CLS). */
+  capturePerf: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -302,6 +323,26 @@ export interface ExportResult {
   screenshotCount?: number;
 }
 
+/**
+ * A durably-retained mark: the note + optional element + screenshot AND a frozen
+ * snapshot of the timeline for the mark's page window [navStartTs, ts]. Stored in
+ * the extension-origin IndexedDB so per-mark copy survives buffer eviction,
+ * navigations and service-worker restarts (ADR Decision 3/4).
+ */
+export interface MarkRecord {
+  id: string;
+  ts: number;
+  tabId: number;
+  pageUrl: string;
+  note: string;
+  element?: MarkedElement;
+  screenshotId?: string;
+  /** Start of the retained window (the mark's page = last navigation ≤ ts). */
+  navStartTs: number;
+  /** Frozen timeline for [navStartTs, ts], including the mark event itself. */
+  events: TimelineEvent[];
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Popup ↔ content summary
 // ─────────────────────────────────────────────────────────────────────────────
@@ -318,11 +359,18 @@ export interface CheckpointInfo {
   label?: string;
 }
 
+/** A navigation boundary (a "page") used for nav-based window selection. */
+export interface NavInfo {
+  ts: number;
+  url: string;
+  type: NavigationType;
+}
+
 export interface TimelineSummary {
   checkpoints: CheckpointInfo[];
   thumbs: ThumbInfo[];
-  /** User-authored marks (note + optional element), newest last. */
-  marks: MarkEvent[];
+  /** Navigation boundaries in chronological order (oldest first). */
+  navigations: NavInfo[];
   firstTs: number;
   lastTs: number;
   pageUrl: string;

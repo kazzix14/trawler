@@ -6,7 +6,7 @@
  * `window.postMessage`. Both producer and consumer share the envelope and
  * payload shapes defined here.
  */
-import type { ConsoleLevel } from './types';
+import type { ConsoleLevel, PerfMetric } from './types';
 
 /** Private tag distinguishing Trawler messages from arbitrary page messages. */
 export const TRAWLER_TAG = '__TRAWLER__' as const;
@@ -21,7 +21,8 @@ export type PageMsgKind =
   | 'network'
   | 'websocket'
   | 'eventsource'
-  | 'nav';
+  | 'nav'
+  | 'perf';
 
 export interface ConsolePayload {
   level: ConsoleLevel;
@@ -71,6 +72,17 @@ export interface NavPayload {
   fromUrl?: string;
 }
 
+export interface PerfPayload {
+  metric: PerfMetric;
+  url?: string;
+  initiatorType?: string;
+  ttfbMs?: number;
+  durationMs?: number;
+  transferSize?: number;
+  value?: number;
+  detail?: string;
+}
+
 export interface PayloadByKind {
   console: ConsolePayload;
   error: ErrorPayload;
@@ -79,6 +91,7 @@ export interface PayloadByKind {
   websocket: SocketPayload;
   eventsource: SocketPayload;
   nav: NavPayload;
+  perf: PerfPayload;
 }
 
 export interface PageEnvelope<K extends PageMsgKind = PageMsgKind> {

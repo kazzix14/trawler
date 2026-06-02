@@ -16,6 +16,7 @@ import { now } from '../time';
 import type {
   CheckpointInfo,
   MarkEvent,
+  NavInfo,
   ScreenshotReason,
   ThumbInfo,
   TimelineEvent,
@@ -111,7 +112,7 @@ export class TimelineStore {
     return {
       checkpoints,
       thumbs,
-      marks: this.marks(),
+      navigations: this.navigations(),
       firstTs,
       lastTs,
       pageUrl,
@@ -121,9 +122,15 @@ export class TimelineStore {
 
   /** User-authored marks in chronological order (oldest first). */
   marks(): MarkEvent[] {
+    return this.buffer.toArray().filter((e): e is MarkEvent => e.kind === 'mark');
+  }
+
+  /** Navigation boundaries (the "pages") in chronological order. */
+  navigations(): NavInfo[] {
     return this.buffer
       .toArray()
-      .filter((e): e is MarkEvent => e.kind === 'mark');
+      .filter((e): e is Extract<TimelineEvent, { kind: 'navigation' }> => e.kind === 'navigation')
+      .map((e) => ({ ts: e.ts, url: e.url, type: e.type }));
   }
 
   /** Return events added since the last drain(), then clear the queue. */

@@ -3,7 +3,7 @@ import { onMessage, sendMessage } from '../lib/messaging';
 import { getSettings, watchSettings } from '../lib/settings';
 import { uid } from '../lib/id';
 import { now } from '../lib/time';
-import type { MarkedElement, Settings, TimelineEvent } from '../lib/types';
+import type { MarkEvent, MarkRecord, MarkedElement, Settings, TimelineEvent } from '../lib/types';
 import { TimelineStore } from '../lib/content/timeline-store';
 import { createRelayReceiver } from '../lib/content/relay-receiver';
 import { createInteractionTracker } from '../lib/content/interaction-tracker';
@@ -53,8 +53,16 @@ export default defineContentScript({
     });
 
     const onEvent = (e: TimelineEvent): void => {
+      if (e.kind === 'perf' && !settings.capturePerf) return;
       store.add(e);
       trigger.consider(e);
+    };
+
+    // Start of the mark's page = the latest navigation at/before the mark.
+    const pageStartTs = (markTs: number): number => {
+      const navs = store.navigations().filter((n) => n.ts <= markTs);
+      if (navs.length > 0) return navs[navs.length - 1].ts;
+      return markTs - settings.windowDefaultSec * 1000;
     };
 
     const receiver = createRelayReceiver({ onEvent, bodyMaxChars: settings.bodyMaxChars });
@@ -103,10 +111,48 @@ export default defineContentScript({
       onEvent({ id, kind: 'checkpoint', ts: now(), label: data.label });
       return { id };
     });
-    onMessage('addMark', ({ data }) => {
+    onMessage('addMark', async ({ data }) => {
       const id = uid();
-      onEvent({ id, kind: 'mark', ts: now(), note: data.note, element: pendingPick ?? undefined });
+      const ts = now();
+      const element = pendingPick ?? undefined;
+      const mark: MarkEvent = { id, kind: 'mark', ts, note: data.note, element };
+      store.add(mark);
       pendingPick = null;
+
+      // Capture the screenshot and WAIT for it, so the mark reliably carries one
+      // before the user can copy it (fixes the prior async race).
+      try {
+        const shot = await sendMessage('requestScreenshot', {
+          reason: 'mark',
+          dedupKey: `mark:${id}`,
+        });
+        if (shot.screenshotId) {
+          store.setScreenshot(id, shot.screenshotId);
+          mark.screenshotId = shot.screenshotId;
+        }
+      } catch {
+        // Screenshot is best-effort.
+      }
+
+      // Freeze this page's timeline up to the mark and persist it durably, so
+      // per-mark copy survives buffer eviction / reload / SW restart.
+      const navStartTs = pageStartTs(ts);
+      const record: MarkRecord = {
+        id,
+        ts,
+        tabId: -1, // the background fills this in from sender.tab
+        pageUrl: location.href,
+        note: data.note,
+        element,
+        screenshotId: mark.screenshotId,
+        navStartTs,
+        events: store.range(navStartTs, ts),
+      };
+      try {
+        await sendMessage('persistMark', { record });
+      } catch {
+        // Durable persistence is best-effort.
+      }
       return { id };
     });
     onMessage('clearPick', () => {

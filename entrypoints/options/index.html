@@ -107,6 +107,17 @@
           </div>
 
           <div class="field">
+            <label class="check">
+              <input id="capturePerf" type="checkbox" />
+              <span>Capture performance metrics</span>
+            </label>
+            <p class="hint">
+              Navigation / resource timing (TTFB), long tasks and LCP/CLS via PerformanceObserver —
+              the signal that distinguishes a slow server from slow client-side work.
+            </p>
+          </div>
+
+          <div class="field">
             <label for="downloadSubdir">Downloads subdirectory</label>
             <input id="downloadSubdir" name="downloadSubdir" type="text" autocomplete="off" spellcheck="false" />
             <p class="hint">Folder under your Downloads directory for saved screenshots.</p>

@@ -74,6 +74,13 @@
                 <option value="">No checkpoints yet</option>
               </select>
             </label>
+            <label class="radio">
+              <input type="radio" name="mode" value="pages" />
+              <span>This page / last</span>
+              <input id="pages-n" class="num" type="number" min="1" step="1" value="1" disabled />
+              <span>page(s)</span>
+              <span id="pages-hint" class="pages-hint"></span>
+            </label>
           </fieldset>
           <div class="cp-row">
             <input

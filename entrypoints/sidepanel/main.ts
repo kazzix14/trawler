@@ -3,8 +3,11 @@
  *
  * Mark-centric workflow (ADR Decision 4/7):
  *   pick element (optional) + write a note (required) → "Add mark" → appended
- *   to the Marks list. Each mark is copyable on its own; a whole time window can
- *   also be copied independently.
+ *   to the Marks list (each mark durably retains a snapshot of its page's
+ *   timeline, so it is copyable on its own even after eviction/reload).
+ *
+ * A time window can also be copied independently — by seconds, since a
+ * checkpoint, or by NAVIGATION ("this page" / "last N pages").
  *
  * The panel stays open while the user drives the page, so it tracks the active
  * tab and live-refreshes. Re-renders are change-gated so refreshes never clobber
@@ -14,10 +17,17 @@ import { browser } from '#imports';
 import { sendMessage } from '../../lib/messaging';
 import { getSettings } from '../../lib/settings';
 import { getScreenshotDataUrl } from '../../lib/background/screenshot-store';
+import { listMarks } from '../../lib/background/mark-store';
 import { formatClock, formatDuration, now } from '../../lib/time';
-import type { CheckpointInfo, MarkEvent, PanelSnapshot, Settings } from '../../lib/types';
+import type {
+  CheckpointInfo,
+  ExportResult,
+  MarkRecord,
+  PanelSnapshot,
+  Settings,
+} from '../../lib/types';
 
-type WindowMode = 'lastN' | 'checkpoint';
+type WindowMode = 'lastN' | 'checkpoint' | 'pages';
 
 const REFRESH_INTERVAL_MS = 1000;
 const NOTE_TIMEOUT_MS = 6000;
@@ -51,6 +61,8 @@ const els = {
   marksList: $<HTMLUListElement>('marks-list'),
   lastN: $<HTMLInputElement>('last-n'),
   checkpointSelect: $<HTMLSelectElement>('checkpoint-select'),
+  pagesN: $<HTMLInputElement>('pages-n'),
+  pagesHint: $<HTMLElement>('pages-hint'),
   checkpointLabel: $<HTMLInputElement>('checkpoint-label'),
   checkpoint: $<HTMLButtonElement>('checkpoint'),
   copyWindow: $<HTMLButtonElement>('copy-window'),
@@ -62,6 +74,7 @@ interface PanelState {
   windowId: number | null;
   settings: Settings;
   snapshot: PanelSnapshot | null;
+  marks: MarkRecord[];
   mode: WindowMode;
 }
 
@@ -70,10 +83,10 @@ const state: PanelState = {
   windowId: null,
   settings: null as unknown as Settings,
   snapshot: null,
+  marks: [],
   mode: 'lastN',
 };
 
-// Change-detection keys so live refresh only rebuilds sections that changed.
 let lastMarksKey = '';
 let lastCheckpointKey = '';
 let lastPendingKey = '';
@@ -127,11 +140,14 @@ function showStatus(message: string, kind: 'ok' | 'error' | 'info' = 'info'): vo
 
 // ── Rendering (change-gated) ──────────────────────────────────────────────────
 
-function render(snap: PanelSnapshot): void {
+function render(snap: PanelSnapshot, marks: MarkRecord[]): void {
   els.pageUrl.textContent = snap.pageUrl || '(unknown page)';
   els.pageUrl.title = snap.pageUrl || '';
   els.eventCount.textContent = `${snap.eventCount} event${snap.eventCount === 1 ? '' : 's'}`;
   els.span.textContent = formatSpan(snap);
+  els.pagesHint.textContent = snap.navigations.length
+    ? `(${snap.navigations.length} navigations buffered)`
+    : '(no navigation recorded yet)';
 
   if (snap.pickerActive !== lastPickerActive) {
     updatePickLabel(snap.pickerActive);
@@ -150,9 +166,9 @@ function render(snap: PanelSnapshot): void {
     lastCheckpointKey = cpKey;
   }
 
-  const marksKey = snap.marks.map((m) => `${m.id}:${m.screenshotId ?? ''}`).join(',');
+  const marksKey = marks.map((m) => `${m.id}:${m.screenshotId ?? ''}`).join(',');
   if (marksKey !== lastMarksKey) {
-    renderMarks(snap.marks);
+    renderMarks(marks);
     lastMarksKey = marksKey;
   }
 }
@@ -204,17 +220,15 @@ function renderCheckpoints(checkpoints: CheckpointInfo[]): void {
   if (prev && checkpoints.some((c) => c.id === prev)) select.value = prev;
 }
 
-function renderMarks(marks: MarkEvent[]): void {
+function renderMarks(marks: MarkRecord[]): void {
   els.marksCount.textContent = `(${marks.length})`;
   els.marksList.replaceChildren();
   els.marksEmpty.hidden = marks.length > 0;
-  // Newest first — the latest observation is usually the one being acted on.
-  for (const mark of [...marks].reverse()) {
-    els.marksList.appendChild(buildMarkItem(mark));
-  }
+  // listMarks already returns newest first.
+  for (const mark of marks) els.marksList.appendChild(buildMarkItem(mark));
 }
 
-function buildMarkItem(mark: MarkEvent): HTMLElement {
+function buildMarkItem(mark: MarkRecord): HTMLElement {
   const li = document.createElement('li');
   li.className = 'mark';
 
@@ -228,7 +242,7 @@ function buildMarkItem(mark: MarkEvent): HTMLElement {
 
   const meta = document.createElement('div');
   meta.className = 'mark-meta';
-  meta.textContent = formatClock(mark.ts);
+  meta.textContent = `${formatClock(mark.ts)} · ${mark.events.length} events`;
   if (mark.element) {
     const code = document.createElement('code');
     code.textContent = mark.element.startTag;
@@ -251,8 +265,8 @@ function buildMarkItem(mark: MarkEvent): HTMLElement {
   copy.className = 'link mark-copy';
   copy.type = 'button';
   copy.textContent = 'Copy';
-  copy.title = 'Copy this mark + the lead-up window';
-  copy.addEventListener('click', () => void copyMark(mark));
+  copy.title = 'Copy this mark with its retained timeline';
+  copy.addEventListener('click', () => void emitExport(sendMessage('exportMark', { markId: mark.id })));
   li.appendChild(copy);
 
   return li;
@@ -270,11 +284,12 @@ async function loadThumb(img: HTMLImageElement, screenshotId: string): Promise<v
 
 function setMode(mode: WindowMode): void {
   state.mode = mode;
-  const lastNRadio = document.querySelector<HTMLInputElement>('input[name="mode"][value="lastN"]');
-  const cpRadio = document.querySelector<HTMLInputElement>('input[name="mode"][value="checkpoint"]');
-  if (lastNRadio) lastNRadio.checked = mode === 'lastN';
-  if (cpRadio) cpRadio.checked = mode === 'checkpoint';
+  for (const value of ['lastN', 'checkpoint', 'pages'] as const) {
+    const radio = document.querySelector<HTMLInputElement>(`input[name="mode"][value="${value}"]`);
+    if (radio) radio.checked = mode === value;
+  }
   els.lastN.disabled = mode !== 'lastN';
+  els.pagesN.disabled = mode !== 'pages';
   const hasCheckpoints = (state.snapshot?.checkpoints.length ?? 0) > 0;
   els.checkpointSelect.disabled = mode !== 'checkpoint' || !hasCheckpoints;
 }
@@ -306,8 +321,9 @@ async function refresh(): Promise<void> {
   try {
     const snap = await sendMessage('getTimelineSummary', undefined, state.tabId);
     state.snapshot = snap;
+    state.marks = await listMarks(state.tabId).catch(() => []);
     showReady();
-    render(snap);
+    render(snap, state.marks);
     setMode(state.mode);
   } catch {
     showUnavailable();
@@ -388,17 +404,7 @@ async function onCheckpoint(): Promise<void> {
   }
 }
 
-/** Copy a single mark plus the lead-up window (note becomes the headline). */
-async function copyMark(mark: MarkEvent): Promise<void> {
-  const windowSec = state.settings?.windowDefaultSec ?? 300;
-  const startTs = mark.ts - windowSec * 1000;
-  await runExport(
-    { startTs, endTs: mark.ts, label: `mark "${mark.note}"` },
-    mark.note,
-  );
-}
-
-async function onCopyWindow(): Promise<void> {
+function onCopyWindow(): void {
   const endTs = now();
   if (state.mode === 'lastN') {
     const seconds = Number(els.lastN.value);
@@ -406,27 +412,48 @@ async function onCopyWindow(): Promise<void> {
       showStatus('Enter a positive number of seconds', 'error');
       return;
     }
-    await runExport({ startTs: endTs - seconds * 1000, endTs, label: `last ${seconds}s` });
+    void emitExport(
+      sendMessage('exportContext', {
+        window: { startTs: endTs - seconds * 1000, endTs, label: `last ${seconds}s` },
+      }),
+    );
     return;
   }
+
+  if (state.mode === 'pages') {
+    const navs = state.snapshot?.navigations ?? [];
+    if (navs.length === 0) {
+      showStatus('No navigation recorded yet on this tab', 'error');
+      return;
+    }
+    const n = Math.max(1, Math.floor(Number(els.pagesN.value) || 1));
+    const idx = Math.max(0, navs.length - n);
+    const pagesBack = navs.length - idx;
+    const label = pagesBack === 1 ? 'this page' : `last ${pagesBack} pages`;
+    void emitExport(
+      sendMessage('exportContext', { window: { startTs: navs[idx].ts, endTs, label } }),
+    );
+    return;
+  }
+
   const selected = els.checkpointSelect.selectedOptions[0];
   const cpTs = selected ? Number(selected.dataset.ts) : NaN;
   if (!selected || !selected.value || !Number.isFinite(cpTs)) {
     showStatus('Select a checkpoint first', 'error');
     return;
   }
-  await runExport({ startTs: cpTs, endTs, label: `since checkpoint (${selected.textContent ?? ''})` });
+  void emitExport(
+    sendMessage('exportContext', {
+      window: { startTs: cpTs, endTs, label: `since checkpoint (${selected.textContent ?? ''})` },
+    }),
+  );
 }
 
-async function runExport(
-  win: { startTs: number; endTs: number; label: string },
-  memo?: string,
-): Promise<void> {
+/** Await an export, write it to the clipboard, and report the outcome. */
+async function emitExport(promise: Promise<ExportResult>): Promise<void> {
   showStatus('Building context…', 'info');
   try {
-    // exportContext is served by the background, which resolves the active tab
-    // itself — independent of any cached tab id here.
-    const res = await sendMessage('exportContext', { window: win, memo });
+    const res = await promise;
     if (!res.ok || !res.text) {
       showStatus(res.error ?? 'Export failed', 'error');
       return;
@@ -480,7 +507,7 @@ function wireEvents(): void {
   els.clearPick.addEventListener('click', () => void onClearPick());
   els.addMark.addEventListener('click', () => void onAddMark());
   els.checkpoint.addEventListener('click', () => void onCheckpoint());
-  els.copyWindow.addEventListener('click', () => void onCopyWindow());
+  els.copyWindow.addEventListener('click', () => onCopyWindow());
 
   els.note.addEventListener('input', syncAddMarkEnabled);
   els.note.addEventListener('keydown', (ev) => {
@@ -492,6 +519,7 @@ function wireEvents(): void {
 
   els.lastN.addEventListener('focus', () => setMode('lastN'));
   els.checkpointSelect.addEventListener('focus', () => setMode('checkpoint'));
+  els.pagesN.addEventListener('focus', () => setMode('pages'));
   document.querySelectorAll<HTMLInputElement>('input[name="mode"]').forEach((radio) => {
     radio.addEventListener('change', () => {
       if (radio.checked) setMode(radio.value as WindowMode);

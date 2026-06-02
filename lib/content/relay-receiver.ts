@@ -14,6 +14,7 @@ import type {
   NavigationEvent,
   NetworkEvent,
   PageErrorEvent,
+  PerfEvent,
   SocketEvent,
   TimelineEvent,
   UnhandledRejectionEvent,
@@ -24,6 +25,7 @@ import type {
   NavPayload,
   NetworkPayload,
   PageEnvelope,
+  PerfPayload,
   RejectionPayload,
   SocketPayload,
 } from '../protocol';
@@ -98,6 +100,22 @@ function toNavigation(p: NavPayload): NavigationEvent {
   return { id: uid(), kind: 'navigation', ts: now(), type: p.method, url: p.url, fromUrl: p.fromUrl };
 }
 
+function toPerf(p: PerfPayload): PerfEvent {
+  return {
+    id: uid(),
+    kind: 'perf',
+    ts: now(),
+    metric: p.metric,
+    url: p.url,
+    initiatorType: p.initiatorType,
+    ttfbMs: p.ttfbMs,
+    durationMs: p.durationMs,
+    transferSize: p.transferSize,
+    value: p.value,
+    detail: p.detail,
+  };
+}
+
 /** Map a validated envelope onto a TimelineEvent, or null for unknown kinds. */
 function mapEnvelope(env: PageEnvelope, bodyMaxChars: number): TimelineEvent | null {
   switch (env.kind) {
@@ -114,6 +132,8 @@ function mapEnvelope(env: PageEnvelope, bodyMaxChars: number): TimelineEvent | n
       return toSocket(env.payload as SocketPayload);
     case 'nav':
       return toNavigation(env.payload as NavPayload);
+    case 'perf':
+      return toPerf(env.payload as PerfPayload);
     default:
       return null;
   }

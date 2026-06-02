@@ -25,6 +25,7 @@ Trawler は **ゼロ instrumentation** のブラウザ検証ツールです。�
 | navigation (load / pushState / popstate / hashchange) | MAIN(history) + content(load) | |
 | 操作トレース (click / input / scroll / focus / key / submit) | content (DOM) | 機微入力はマスク |
 | DOM 変化 | content (MutationObserver) | 一定間隔で集約 |
+| perf (navigation / resource / longtask / LCP / CLS) | MAIN world `PerformanceObserver({buffered:true})` | **リクエスト毎の TTFB** でサーバ遅延(N+1)とクライアント遅延を判別。注入前のリクエストも回収 |
 | チェックポイント / 要素マーク | ユーザー操作 | 自動スクショ付き |
 
 スクショの自動トリガ: チェックポイント / 要素マーク / console エラー / network ルール一致
@@ -82,11 +83,11 @@ pnpm compile        # tsc --noEmit による型チェック
 2. 異常に気づいたら拡張アイコン（または `Ctrl/Cmd+Shift+Y`）で**サイドパネル**を開く。ページ操作中も開いたままなので、ピッカーやタイムライン確認が自然にできる。
 3. **Mark を作る**（中心ワークフロー）:
    - （任意）**Pick element**（`Alt+Shift+P`）で該当要素を指す → パネルに pick した開始タグが表示される。ページ上には案内バナーが出て、pick するとトーストで確認。
-   - **note（必須）**を書く → **+ Add mark**。Marks リストに追加され、その瞬間のスクショも自動で撮られる。
+   - **note（必須）**を書く → **+ Add mark**。Marks リストに追加され、その瞬間のスクショも自動で撮られる。**各 mark は「そのページ分のタイムライン」を凍結保持**するので、バッファが流れても・リロードしても後から確実にコピーできる。
    - → つまり `pick(任意) & note 入力 → Add mark → リストに追加`。
 4. **コピーは2通り**:
-   - **Mark ごと**: Marks リスト各項目の **Copy**（その note ＋要素 ＋スクショ ＋直前の時間窓を束ねる）。
-   - **時間窓ごと**: 「直近 N 秒」または「チェックポイント以降」（`Alt+Shift+Y` でチェックポイント）を選んで **Copy window context**。
+   - **Mark ごと**: Marks リスト各項目の **Copy**（その note ＋要素 ＋スクショ ＋凍結したページ分タイムライン）。
+   - **時間窓ごと**: 「直近 N 秒」/「チェックポイント以降」/**「このページだけ・直近 N ページ」**（ページ遷移境界で切る）を選んで **Copy window context**。`Alt+Shift+Y` でチェックポイント。
 5. クリップボードに事実だけのテキスト束が入り、スクショは `Downloads/trawler/` に保存され本文にはパスのみが載る。
 6. Claude Code に貼って「これを保存して直して」と指示する。
 

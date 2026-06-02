@@ -11,6 +11,7 @@ import { defineExtensionMessaging } from '@webext-core/messaging';
 import type {
   ExportResult,
   ExportWindow,
+  MarkRecord,
   PanelSnapshot,
   ScreenshotReason,
   TimelineEvent,
@@ -22,9 +23,13 @@ export interface ProtocolMap {
   requestScreenshot(data: { reason: ScreenshotReason; dedupKey: string }): {
     screenshotId: string | null;
   };
+  /** Durably store a mark with its frozen timeline snapshot. */
+  persistMark(data: { record: MarkRecord }): { ok: true };
 
-  // popup → background
+  // side panel → background
   exportContext(data: { window: ExportWindow; memo?: string }): ExportResult;
+  /** Build a self-contained bundle from a retained mark's snapshot. */
+  exportMark(data: { markId: string }): ExportResult;
 
   // background → content (requires tabId)
   collectTimeline(data: { startTs: number; endTs: number }): {

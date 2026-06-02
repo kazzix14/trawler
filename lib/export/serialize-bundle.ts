@@ -4,7 +4,7 @@
  * holds no LLM — this only packages observed facts. Inference is left to the
  * consumer (Claude Code).
  */
-import type { ElementHint, ExportInput, MarkEvent, TimelineEvent } from '../types';
+import type { ElementHint, ExportInput, MarkEvent, PerfEvent, TimelineEvent } from '../types';
 import { formatClock, formatDuration, formatOffset } from '../time';
 
 const PRIMING =
@@ -30,6 +30,8 @@ export function serializeBundle(input: ExportInput): string {
   );
   lines.push(`Generated: ${input.generatedAtIso}`);
   lines.push(`Events:    ${events.length}`, '');
+
+  lines.push(...formatPerfSummary(events));
 
   lines.push('--- Memo ---');
   lines.push(input.memo && input.memo.trim() ? input.memo.trim() : '(none)');
@@ -166,6 +168,10 @@ function formatEvent(
       out.push(`${h} ✎ MARK "${e.note}"${e.element ? ` — ${e.element.startTag}` : ''}`);
       break;
     }
+    case 'perf': {
+      out.push(`${h} PERF ${perfLine(e)}`);
+      break;
+    }
   }
   if (e.screenshotId && paths[e.screenshotId]) {
     out.push(`     ↳ screenshot: ${paths[e.screenshotId]}`);
@@ -190,4 +196,69 @@ function collectScreenshots(input: ExportInput): ShotRow[] {
     rows.push({ ts: e.ts, label: e.kind, path });
   }
   return rows.sort((a, b) => a.ts - b.ts);
+}
+
+/** One-line rendering of a perf event for the timeline. */
+function perfLine(e: PerfEvent): string {
+  switch (e.metric) {
+    case 'navigation':
+      return `navigation ${e.detail ?? `ttfb=${e.ttfbMs ?? '?'}ms`}`;
+    case 'resource': {
+      const ttfb = e.ttfbMs !== undefined ? ` TTFB ${e.ttfbMs}ms` : '';
+      const size = e.transferSize ? `, ${e.transferSize}B` : '';
+      const dur = e.durationMs !== undefined ? ` (dur ${e.durationMs}ms${size})` : '';
+      return `resource ${e.initiatorType ?? ''} ${e.url ?? ''}${ttfb}${dur}`.replace(/\s+/g, ' ');
+    }
+    case 'longtask':
+      return `long task ${e.durationMs ?? 0}ms`;
+    case 'lcp':
+      return `LCP ${e.value ?? 0}ms`;
+    case 'cls':
+      return `CLS ${e.value ?? 0}`;
+    case 'paint':
+      return `${e.detail ?? 'paint'} ${e.value ?? 0}ms`;
+  }
+}
+
+/**
+ * Performance summary: surfaces the server-vs-client signal up top. A large
+ * navigation/resource TTFB points at the SERVER (e.g. an N+1 query); time spent
+ * after responseEnd with long tasks points at the CLIENT.
+ */
+function formatPerfSummary(events: TimelineEvent[]): string[] {
+  const perf = events.filter((e): e is PerfEvent => e.kind === 'perf');
+  if (perf.length === 0) return [];
+
+  const out: string[] = ['--- Performance ---'];
+
+  for (const n of perf.filter((p) => p.metric === 'navigation')) {
+    out.push(`Navigation: ${n.detail ?? `ttfb=${n.ttfbMs ?? '?'}ms`}`);
+  }
+
+  const resources = perf
+    .filter((p) => p.metric === 'resource')
+    .sort((a, b) => (b.ttfbMs ?? -1) - (a.ttfbMs ?? -1))
+    .slice(0, 5);
+  if (resources.length > 0) {
+    out.push('Slowest requests by server time (TTFB):');
+    resources.forEach((r, i) => {
+      const ttfb = r.ttfbMs !== undefined ? `${r.ttfbMs}ms` : 'n/a';
+      const dur = r.durationMs !== undefined ? `${r.durationMs}ms` : '?';
+      out.push(`  ${i + 1}. ${(r.initiatorType ?? '').padEnd(8)} ${r.url ?? ''}  TTFB ${ttfb} (dur ${dur})`);
+    });
+  }
+
+  const longtasks = perf.filter((p) => p.metric === 'longtask');
+  if (longtasks.length > 0) {
+    const total = longtasks.reduce((sum, t) => sum + (t.durationMs ?? 0), 0);
+    out.push(`Long tasks: ${longtasks.length} (total ${total}ms blocking the main thread)`);
+  }
+
+  const lcp = perf.filter((p) => p.metric === 'lcp').reduce((m, p) => Math.max(m, p.value ?? 0), 0);
+  if (lcp > 0) out.push(`LCP: ${lcp}ms`);
+  const cls = perf.filter((p) => p.metric === 'cls').reduce((m, p) => Math.max(m, p.value ?? 0), 0);
+  if (cls > 0) out.push(`CLS: ${cls}`);
+
+  out.push('');
+  return out;
 }

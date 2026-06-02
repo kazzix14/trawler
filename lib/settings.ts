@@ -27,6 +27,7 @@ export const DEFAULT_SETTINGS: Settings = {
   maskInputs: true,
   bodyMaxChars: 4096,
   downloadSubdir: 'trawler',
+  capturePerf: true,
 };
 
 const ITEM = storage.defineItem<Settings>('local:settings', {
